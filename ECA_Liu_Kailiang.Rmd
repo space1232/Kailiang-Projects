@@ -1,0 +1,403 @@
+---
+title: "ECA"
+output: word_document
+date: "2023-09-18"
+editor_options: 
+  markdown: 
+---
+
+```{r,results='hide'}
+knitr::opts_chunk$set(echo = FALSE)
+knitr::opts_chunk$set(warning = FALSE)
+```
+
+```{r,results='hide'}
+packages<-c("spData","ggthemes","sf","ggrepel","readxl","lubridate","tidyverse","ggplot2")
+install.packages(packages,repos = "http://cran.us.r-project.org")
+install.packages("ggpubr",repos = "http://cran.us.r-project.org")
+install.packages("readxl",repos = "http://cran.us.r-project.org")
+library(spData) 
+library(ggthemes)
+library(sf)
+library(ggrepel)
+library(readxl)
+library(lubridate)
+library(ggplot2)
+library(tidyverse)
+library(ggpubr)
+```
+#Executive Summary
+
+This report conducts a comprehensive data analysis on emergency food aid and conflict across 42 countries in the Sub-Saharan Africa region from 2002 to 2020. The dataset utilised for the analysis contains information regarding conflict, food aid, disasters, along with political and economic data of the countries. The report is structured into four primary sections.The introduction section gives a brief description of the background, objective analysis processes and key findings of the report.The Data section provides detailed information about the dataset used in this report, the methods used for data processing, and also the data extraction and integration processes of the data series from the WDI database.The Exploratory Data Analysis section uses visualizations to analyze the relationship between conflict and emergency food aid, starting from the overall relationship and then zooming in to specific countries and regions to find possible existing relationships. The final concluding section summarizes the findings and insights of this report.
+
+
+#Introduction
+
+The conflict and emergency food aid situation in Sub-Saharan Africa(SSA) has been a major challenge for the past 2 decades. The region has experienced a number of conflicts, including civil wars, inter-state wars, and insurgencies. These conflicts have displaced millions of people, disrupted agricultural production, and most importantly, impacting food security and causing poverty to people living in the region. The world has constantly been providing emergency food aid to countries in Sub-Saharan Africa, aiming to ease the negative impacts on food caused by conflict. However, there has been a constant debate about whether emergency food aid could be the fuel to the conflicts going on in the SSA region. Therefore,the objective of the report is discovering the relationship between conflict and emergency food aid through exploratory data analysis, generating insights from data that could potentially answer the question of whether emergency food aid leads to conflicts in the SSA region. The dataset used for the analysis contains information about conflict, food aid, natural disasters and other data related to the political and economical aspects of the SSA region. Analysis of the data starts with discovering the trend, patterns and associations of conflict, natural diaster, and food aid on the macro level.It is then drilled down to specific countries chosen for further analysis of potential factors that may cause emergency food aid to lead to more conflicts.The analysis shows positive relationship between natural disaster and food aid, it also discovers that the impact of emergency food aid on conflict varies among countries and the economic status might be associated with this situation
+
+#Data
+
+The "FoodAid" dataset I utilise for this analysis contains 798 observations from 42 countries in the Sub-Saharan Africa region, spanning from 2002 to 2020. It includes variables related to the impact of civil conflict, natural disasters, food aid information, political status, and some socioeconomic indicators such as GDP Per capita and population. There are some inappropriate datatypes, for example, "overall_conflict",'minor_conflict', and "major_conflict" should not be numeric values as they are binomial data. The "total_affected_disasters" variable is derived from summing up the "injured_disasters","affected_disasters",and"homeless_disasters
+
+There are no duplicate records in the dataset but several variables have missing values, most notably on_set_war, off_set_war, battle_deaths, and civilian_deaths. Data from 2018 to 2020 of each country are absent in these variables, adding up to 126 NA values in each column. These NA records takes up approximately 16% of the total observations in each column. Removing these rows is not advisable as it could introduce bias.Therefore, I decide to keep these NA values and skip them when used in the analysis.However, having a substantial number of NA records may also lead to inaccurate analysis results. Moreover battle_deaths and civilian_deaths contain abnormal amount of "1" values, which could also influence the credibility of the analysis. Additionally, gdp_per_capita has 37 missing values, inflation has 34, polity2 has 7, and population has 6 missing values.
+
+```{r,echo=TRUE,results='hide'}
+#Import the data
+library(readxl)
+FoodAid <- read_excel("ANL501_FoodAid.xlsx", sheet = 1)
+
+#check variables and data types
+str(FoodAid)
+#check for NA values
+na_counts <- colSums(is.na(FoodAid))
+na_counts 
+
+#Check for duplicated record
+sum(duplicated(FoodAid))
+```
+
+#WDI Data Extraction and Integration
+
+As I am interested to discover if the level of corruption in a country associate with emergency food aid or civil conflict, I extracted the "CC.EST" series from the World Development Incubator Package. According to the World Development Incubator, this series stands for "Control of Corruption: Estimate",which "captures perceptions of the extent to which public power is exercised for private gain, including both petty and grand forms of corruption, as well as "capture" of the state by elites and private interests."This essentially reflects the level of corruption in the contry with -2.5 being most corrupted and 2.5 being the opposite. I want to examine my hypothesis that corruption causes conflict and reduces the positive impact of emergency food aid. 
+
+I extracted the data of all countries from the period of 2002 to 2020. I then selected only "contry", "year" and "CC.EST". To join this data to the main dataset, I first changed the format of the "year" column from the main dataset with the "lubridate" package to match with the corresponding records in the WDI data. I then changed the data type of "year" in both datasets to character as they should not be numeric. Finally, since the WDI data extracted was already in the long format, I simply joined these datasets on the "country" and "year" columns.
+```{r,echo=TRUE}
+#Use the WDI package to fetch the Control of corruption:Estimate variable
+install.packages("WDI",repos = "http://cran.us.r-project.org")
+library(WDI)
+wdi_data <- WDI(country="all", indicator="CC.EST", start=2002, end=2020) #Control of corruption:Estimate
+
+#Select only the country, year, and CC.EST columns
+wdi_data<-
+  wdi_data%>%
+  select(country,year,CC.EST)%>%
+  mutate(country = ifelse(country == "Congo, Dem. Rep.", "Democratic Republic of the Congo", country))
+  
+#Change the format of the "year" column from the "FoodAid" data frame with the 'lubricate' package to display in yyyy format
+library(lubridate)
+FoodAid$year<-year(FoodAid$year)
+
+#Change the data type of 'year' to character for both tables
+FoodAid$year<-as.character(FoodAid$year)
+wdi_data$year<-as.character(wdi_data$year)
+
+#Left join this variable to the food aid data frame using country and year
+FoodAid<- FoodAid %>%
+  left_join(wdi_data, by = c("country" = "country", "year" = "year"))
+
+head(FoodAid)
+```
+#Exploritory Data Analysis
+
+#Analysing Trends:
+To start the exploratory data analysis,I analysed the overall trend of conflict, emergency food aid and natural disaster in the SSA region by creating line plots to reveal the time series trend.The purpose of visualising this is to find out any similarities and differences in the progress of each variable and whether there is an association between these variables. I chose the sum of battle death and civilian deaths as the conflict indicator. Although 16% of these data are missing, they are still suitable variables as they imply the degree of seriousness of the conflicts in a country, and no data is missing from the rest of the years.An alternate variable ,Overall_conflict could be used as a reference to infer the conflict situation from 2017 to 2020. 
+I used total_affected_disaster as the natural disaster indicator as it is an aggregation of various impacts caused by disasters."Emergency_food_aid" is used to plot the time series plot for emergency food aid.
+
+```{r}
+library(tidyverse)
+# group conflict,disaster and emergency food aid by year
+grouped_by_year<-FoodAid%>%
+  group_by(year)%>%
+  summarise(overall_conflict=sum(overall_conflict,na.rm = TRUE),
+            emergency_food_aid = sum(emergency_food_aid, na.rm = TRUE),
+            battle_deaths = sum(battle_deaths, na.rm = TRUE),
+            civilian_deaths = sum(civilian_deaths, na.rm = TRUE),
+            death_disasters=sum(death_disasters,na.rm = TRUE),
+            total_affected_disasters=sum(total_affected_disasters,na.rm = TRUE))%>%
+  mutate(conflict_death_sum=battle_deaths+civilian_deaths)
+
+library(ggplot2)
+p_conflict_year<-ggplot(grouped_by_year,aes(x=year,y=conflict_death_sum,group=1))+
+  geom_line(color="darkred")+
+  labs(title="Trend of Conflict Deaths in SSA(2002-2020)", y="Conflict Deaths")+
+  theme_clean()
+#for reference 
+p_conflict_year2<-ggplot(grouped_by_year,aes(x=year,y=overall_conflict,group=1))+
+  geom_line(color="darkred")+
+  labs(title="Trend of Conflict Deaths in SSA(2002-2020)", y="Conflict Deaths")+
+  theme_clean()
+p_disaster_year <- ggplot(grouped_by_year, aes(x=year, y=total_affected_disasters,group=1)) +
+  geom_line(colour="darkblue") +
+  labs(title="Trend of Disaster Impacts in SSA(2002-2020)", y="Disaster Deaths")+
+  theme_clean()
+
+
+p_food_aid_year <- ggplot(grouped_by_year, aes(x=year, y=emergency_food_aid,group=1)) +
+  geom_line(colour="darkgreen") +
+  labs(title="Trend of Emergency Food Aid in SSA(2002-2020)", y="Emergency Food Aid")+
+  theme_clean()
+
+
+ggarrange(p_conflict_year,p_food_aid_year,p_disaster_year,ncol = 1)
+
+```
+Trend of Conflict Deaths in SSA (2002-2020):
+
+The plot shows fluctuations in the number of conflict deaths over the years.There is a noticeable declining trend stating from its peak in the year 2002 till the year 2005, conflict deaths then keeps at a relatively lower level from 2005 till 2014. The line starts to go upwards from 2014 to 2017. Although data for the year 2018,2019,2020 is missing, the over_conflict data displays an upward trend within this period.
+
+Trend of Disaster Impacts in SSA (2002-2020):
+
+The number of people affected by disasters also shows fluctuations over the years by the fluctuations are relatively more violent.There are noticeable spikes in the years 2005, 2011, and 2015 and 2020, which means that major natual disasters could have occured in these years. Other years show relatively lower numbers of people affected by disasters.
+
+Trend of Emergency Food Aid in SSA (2002-2020):
+
+The trend of emergency food aid appears to be relatively stable with slightly less fluctuations.
+There is an increasing trend in emergency food aid stating from the year 2002 till the year 2005. There is a significant decrease in emergency food aid in the year 2020 possibly due to COVID-19.
+
+It is interesting to observe that the trend of conflict deaths and the trend of emergency food aid appear to be inversely proportionate to each other during the period from 2002 to 2005, but it is too early to draw the conclusion that conflict and emergency food aid are negatively related as this characteristic is hard to observe in the following years, where the trend lines of conflict death and emergency food aid display similar pattern. It is also observed that the shapes of the trend line of disaster impacts and emergency food aid are similar before they get very different from 2014 onwards.
+
+#Discovering relationships between conflict food aid and natual disaster:
+To further discover any associations among the variables, I plotted several scatter plots aiming to discover any observable relationships.Scatter plots are suitable for visualising relationships between variables. Apart from the conflict, emergency food aid and natual disasters variables, I am also interested in finding out whether there is a relationship between corruption control and emergency food aid received. To plot conflict vs emergency food aid, I created the variable "conflict_death_sum" in the "Food Aid" data set by adding up battle deaths and civilian deaths with the mutate function.
+```{r}
+
+FoodAid<-
+  FoodAid%>% mutate(conflict_death_sum=battle_deaths+civilian_deaths)
+
+p_Conflict_foodaid_scatter<-
+  ggplot(FoodAid,aes(x = emergency_food_aid, y = conflict_death_sum)) + 
+  geom_point(color="darkred",alpha=0.5) +
+  labs(title = "Emergency Food Aid vs. Conflict Deaths",
+       x = "Emergency Food Aid (million USD)",
+       y = "Conflict Deaths")+
+  geom_smooth(method = "lm", se = FALSE)
+p_disaster_foodaid_scatter<-
+  ggplot(FoodAid,aes(x = emergency_food_aid, y = total_affected_disasters)) + 
+  geom_point(color="darkgreen",alpha=0.5) +
+  labs(title = "Emergency Food Aid vs. Disaster Affected",
+       x = "Emergency Food Aid (million USD)",
+       y = "Disaster Affected")+
+  geom_smooth(method = "lm", se = FALSE)
+p_corruption_foodaid_scatter<-
+  ggplot(FoodAid,aes(x = emergency_food_aid, y = CC.EST,color=as.character(FoodAid$overall_conflict))) + 
+  geom_point(alpha=0.5) +
+  labs(title = "Emergency Food Aid vs. Corruption",
+       x = "Emergency Food Aid (million USD)",
+       y = "Control of Corruption",
+       color = "Overall Conflict")
+p_Conflict_foodaid_scatter
+p_disaster_foodaid_scatter
+p_corruption_foodaid_scatter
+```
+Looking at the 2 scatter plots demonstrating food aid vs conflict deaths and Food aid vs disaster affected as a whole, they do not seem to display obvious relationship between conflict and emergency food aid and also the relationship between natural disaster and emergency food aid. Majority data points cluster around the origin and along either of the x and y axis. The reason for this could be due to the quality of the data source or uneven distribution of conflict, food aid and disaster.However, data points that are not clustered around the origin shows a general downward trend. 
+
+The Food Aid vs Corruption scatter plot displays a clearer pattern .the data points are colored by "overall_conflict" to find out the association between conflict and corruption.Although many data points are clustered along the y axis, It can be observed from the plot that countries which has negative corruption control scores are likely to receive more food aid.Moreover, these countries are more prone towards conflict as all of the blue points are below 0 corruption control estimate.
+
+To examine whether the messiness in these scatter plots is due to uneven distributions of conflict, emergency food aid and disaster, I would like to visualise them in the next part of the analysis.
+
+#Distribution of conflict, disaster and food aid:
+I want to discover the distributions of these variables with the combination of bar charts and spacial plots. Bar charts are very suitable for identifying the top few countries with high level of conflicts,disasters and emergency food aid whereas spacial plots clearly display the geographical locations of those countries, allowing me to identify potential clusters of conflicts, natural disasters or emergency food aid. 
+
+To plot theses visualisations, I grouped the FoodAid data frame by country and aggregated the sum of selected variables
+
+```{r}
+grouped_by_country<-FoodAid%>%
+  group_by(country)%>%
+  summarise(overall_conflict=sum(overall_conflict,na.rm = TRUE),
+            emergency_food_aid = sum(emergency_food_aid, na.rm = TRUE),
+            battle_deaths = sum(battle_deaths, na.rm = TRUE),
+            civilian_deaths = sum(civilian_deaths, na.rm = TRUE),
+            death_disasters=sum(death_disasters,na.rm = TRUE),
+            total_affected_disasters=sum(total_affected_disasters,na.rm = TRUE),
+            corruption_control=mean(CC.EST,na.rm = TRUE))%>%
+  mutate(conflict_death_sum=battle_deaths+civilian_deaths)
+
+#subset for africa data
+library(spData) 
+library(ggthemes)
+library(sf)
+library(ggrepel)
+theme_set(theme_bw()) 
+africa <- filter(world, continent == "Africa")
+
+#leftjoin
+conflict_disaster_foodaid_polygon <- 
+  left_join(africa,grouped_by_country,by = c("name_long"="country"))
+
+# generate the centroid,
+africa.coord <-  
+  conflict_disaster_foodaid_polygon %>% st_centroid() %>%  
+  mutate(long = st_coordinates(geom)[,1], lat = st_coordinates(geom)[,2])
+
+#conflict distribution map
+p_conflict_distribution<-
+  ggplot(data =conflict_disaster_foodaid_polygon, mapping = aes(fill = conflict_death_sum)) + 
+  geom_sf()+
+   scale_fill_gradient(low = "white", high = "darkred")+
+   geom_text_repel(data = africa.coord, aes(x= long, y=lat, label = name_long), color = "black",size=3)+
+  labs(title = "Conflict Deaths Distribution in SSA")+
+  theme(legend.position = "none")
+  
+
+p_disaster_distribution<-
+  ggplot(data =conflict_disaster_foodaid_polygon, mapping = aes(fill = total_affected_disasters)) + 
+  geom_sf()+
+   scale_fill_gradient(low = "white", high = "darkblue")+
+   geom_text_repel(data = africa.coord, aes(x= long, y=lat, label = name_long), color = "black",size=3)+
+  labs(title = "Natual Disaster Affected Distribution in SSA")+
+  theme(legend.position = "none")
+ 
+
+p_foodaid_distribution<-
+  ggplot(data =conflict_disaster_foodaid_polygon, mapping = aes(fill = emergency_food_aid)) + 
+  geom_sf()+
+   scale_fill_gradient(low = "white", high = "darkgreen")+
+   geom_text_repel(data = africa.coord, aes(x= long, y=lat, label = name_long), color = "black",size=3)+
+  labs(title = "Emergency Food Aid Distribution in SSA")+
+  theme(legend.position = "none")
+
+```
+
+```{r fig.width = 5, fig.height = 5}
+#conflict distribution
+p_conflict_distribution
+```
+This plot visualises the geographical distribution of accumulated conflict deaths in SSA.The colour scale represents the total number of conflict deaths in each country,the darker the colour, the higher the number of conflict deaths. It is observed that the distribution is uneven, most conflict deaths come from Sudan and its neighbouring countries in the central Africa region.Several countries in the Western Africa region also had noticeable amount of conflict deaths.Little data can be observed in the Southern Africa region. 
+
+```{r fig.width = 5, fig.height = 5}
+#foodaid distribution
+p_foodaid_distribution
+```
+
+This plot visualises the geographical distribution of accumulated emergency food aid in SSA.The colour scale represents the total amount of food aid received in each country from 2002 to 2020,the darker the colour, the higher the amount of food aid received.The plot shows that the highest levels of emergency food aid are distributed in Ethiopia and Sudan. Emergency food aid is relatively evenly distributed compared to conflict deaths, but several countries in the Southern Africa and Western Africa regions generally receive less to no food aid.
+
+```{r fig.width = 5, fig.height = 5}
+#disaster distribution
+p_disaster_distribution
+```
+This plot visualises the geographical distribution of the accumulated number of people affected by natural disasters in the SSA region.The colour scale represents the total number of people affected by natural disasters in each country from 2002 to 2020.The darker the colour, the higher the number.The plot shows that natural disasters have caused major damages to Ethiopia where the colour is the darkest. 
+
+By looking across these 3 spacial plots and comparing them, it is found that Sudan and Ethiopia,being countries with the highest level of conflict deaths and natual disaster impacts respectively, received highest level of food aid. This information helps me to locate the countries to focus on in the subsequent analysis.
+
+```{r}
+
+p_conflict_bar<-
+  ggplot(grouped_by_country,aes(x=reorder(country,conflict_death_sum),y=conflict_death_sum))+
+  geom_col(aes(fill=conflict_death_sum))+
+  labs(title = 'Conflict Deaths by Country',x='Country',y="Conflict Deaths")+
+  coord_flip()+
+  theme_minimal()+
+  scale_fill_gradient(low = "lightgrey", high = "darkred")+
+  theme(legend.position = "none")
+
+
+p_food_aid_bar<-
+ggplot(grouped_by_country,aes(x=reorder(country,emergency_food_aid),y=emergency_food_aid))+
+  geom_col(aes(fill=emergency_food_aid))+
+  labs(title = 'Amount of Emergency Food Aid Received by Country',x="Country",y="Emergency Food Aid")+
+  coord_flip()+
+  theme_minimal()+
+  scale_fill_gradient(low = "lightgrey", high = "darkgreen")+
+  theme(legend.position = "none")
+
+
+p_disaster_bar<-
+ggplot(grouped_by_country,aes(x=reorder(country,total_affected_disasters),y=total_affected_disasters))+
+  geom_col(aes(fill=total_affected_disasters))+
+  labs(title = 'Natual Disaster Deaths by Country',y="Disaster Deaths",x="Country")+
+  coord_flip()+
+  theme_minimal()+
+  scale_fill_gradient(low = "lightgrey", high = "darkblue")+
+  theme(legend.position = "none")
+
+p_conflict_bar
+p_food_aid_bar
+p_disaster_bar
+```
+These bar chats, ordered in descending order, supports the spacial plots by clearly showing what are the top countries in each plot. Having this information revealed, I can conduct analysis on the country level to discover the relationship between conflict, natural disasters and emergency food aid in key countries.
+
+#Country-level Analysis:
+
+In this part of the data analysis, I will first focus on conflict and food aid in several countries as the sample. Countries selected are Sudan, Ethiopia,Democratic Republic of the Congo, Chad, and Uganda. These countries are closely located and they take up a substantial amount of conflict deaths and emergency food aid in the region. I will plot a scatter plot to start my analysis.
+```{r}
+#zoom in to Sudan chad
+Sudan<-
+  FoodAid%>%
+  filter(country%in%c("Sudan","Ethiopia","Democratic Republic of the Congo","Chad","Uganda"))
+
+Ethiopia<-
+  FoodAid%>%
+  filter(country%in%c("Somalia","Ethiopia","Kenya","Chad","Sudan","Democratic Republic of the Congo","Uganda"))
+
+p_conflict_sudan_neighbours<-
+ggplot(Sudan,aes(x = emergency_food_aid, y = conflict_death_sum,color=country)) + 
+  geom_point(alpha=0.5) +
+  labs(title = "Emergency Food Aid vs. Conflict Deaths (Sudan and Neighbours)",
+       x = "Emergency Food Aid (million USD)",
+       y = "Conflict Deaths")+
+  geom_smooth(method = "lm", se = FALSE)
+
+p_disaster_ethiopia_neighbours<-
+ggplot(Ethiopia,aes(x = emergency_food_aid, y = total_affected_disasters,color=country)) + 
+  geom_point(alpha=0.5) +
+  labs(title = "Emergency Food Aid vs. Natural Disaster Impact (Ethiopia and Neighbours)",
+       x = "Emergency Food Aid (million USD)",
+       y = "Natural Disaster Affected")+
+  geom_smooth(method = "lm", se = FALSE)
+
+p_conflict_sudan<-ggplot(Sudan,aes(x=year,y=conflict_death_sum,group=1))+
+  geom_line(color="darkred")+
+  labs(title="Trend of Conflict Deaths in Sudan", y="Conflict Deaths")+
+  theme_clean()
+
+
+p_food_aid_sudan <- ggplot(Sudan, aes(x=year, y=emergency_food_aid,group=1)) +
+  geom_line(colour="darkgreen") +
+  labs(title="Trend of Emergency Food Aid in Sudan", y="Emergency Food Aid")+
+  theme_clean()
+
+```
+
+```{r }
+#relationship betweeen conflict deaths and emergency food aid in Sudan and its neighbours
+p_conflict_sudan_neighbours
+```
+It is shown in this plot that the relationship between conflict deaths and emergency food aid differs by country.In Sudan and Chad, amount of conflict deaths seems to negatively relates to emergency food aid. On the other hand, amount of conflict deaths seems to positively relates to emergency food aid received in Democratic Republic of the Congo,Ethiopia and Uganda. This implies that impact of emergency food aid on conflicts can be different in different countries, there are other factors to consider such as natual disaster.
+
+```{r}
+p_disaster_ethiopia_neighbours
+
+```
+To find out the relationship between natual disaster and emergency food aid, the plot uses data from Ethiopia and its neighbouring countries which take up a substantial proportion of natual disaster affected  and emergency food aid in the region.Countries used to plot the previous plot are also included to find out whether natual disaster is a potential cause of the differences found earlier. This plot reveals a weak positive relationship between emergency food aid and Natual Disaster Affected in these countries. Overall, more food aid is provided to areas suffering bigger losses from natual disasters and no clear sign shows that natual disaster in the country influences whether emergency food aid reduces conflict or leads to more conflict.
+
+There might be many factors that determine whether food aid leads to more conflicts in a country I am interested in corruption control. It is found from the corruption_foodaid_scatter plot that corrupted contries are prone toward conflicts and emergency food aid often flows to them. Does more corrupted countries have reduced effect of food aid on conflict? 
+```{r}
+Sudan_neighbour_grouped<-
+  Sudan%>%
+  group_by(country)%>%
+  summarise(gdp_per_capita_avg=mean(gdp_per_capita,na.rm = TRUE),
+            CC.EST_avg=mean(CC.EST,na.rm = TRUE))
+
+```
+
+```{r}
+Sudan_neighbour_corruption<-
+  ggplot(Sudan_neighbour_grouped,aes(x=country,y=CC.EST_avg,fill=country))+
+  geom_col()+
+  labs(title="Average Corruption Control Level of Sudan and Neighbour Countries",
+       x="Country",
+       y="Average Corruption Control Level")+
+  theme_clean()+
+  guides(fill="none")
+Sudan_neighbour_corruption
+```
+
+To answer this question, I have plotted a bar chart showing the average control of corruption estimate score of the sample countries that I selected for analysing the relationship between conflict and food aid. I have identified that Democratic Republic of the Congo Ethiopia,and Uganda displays proportional relationships to different extends. However in this plot,their CC.EST scores do not imply that they are more corrupted than the other 2 countries.
+
+There are other variables that could be used for further analysis. Apart from corruption control, I am also interested in whether food aid leads to more conflict in poorer countries.
+
+```{r}
+Sudan_neighbour_gdp_per_cap<-
+  ggplot(Sudan_neighbour_grouped,aes(x=country,y=gdp_per_capita_avg,fill=country))+
+  geom_col()+
+  labs(title="Average GDP Per Cap in Sudan and Neighbour Countries",
+       x="Country",
+       y="Average GDP Per Capita")+
+  theme_clean()+
+  guides(fill="none")
+Sudan_neighbour_gdp_per_cap
+```
+The plot demonstrates the average GDP per capita of the selected countries.It is observed from the plot that Democratic Republic of the Congo, Ethiopia and Uganda have relatively lesser GDP per capita compared to Sudan and Chad. This observation could potentially reflect that in poorer countries, it is possible that food aid could lead to more conflicts. However, this observation cannot represent the entire SSSA region as it is only derived from data representing parts of the region 
+
+#Conclusion
+
+The analysis in the report finds out that the association between the overall trend of conflict and emergency food aid, as well as natural disasters, expresses different and similar characteristics at different points of time. It is also found that the distribution of conflicts is uneven ,with a large proportion of conflicts locating in Sudan and its neighbouring countries. Although there is not a noticeable correlation between conflicts and emergency food aid of the entire SSA region overall,by zooming into these areas, both proportional and inverse proportional relationships of food aid and conflict is observed. Thus, it can be concluded that whether emergency food aid leads to more conflict in the SSA region differs in different countries. While corruption may not a driven factor, one potential factor could be the economic status of that country. Countries with lower GDP per capita are like to have more conflicts when receiving emergency food aid. However, there are still insufficient evidences to support the statement that emergency food aid leads to more conflict, A more extensive exploration into additional factors is necessary for a comprehensive and conclusive understanding.
